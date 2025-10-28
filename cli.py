@@ -1,0 +1,212 @@
+#!/usr/bin/env python
+"""
+command line interface for the formal verifier
+
+usage: python cli.py "Write a function that finds maximum in an array"
+"""
+import sys
+import argparse
+import os
+from dotenv import load_dotenv
+from src.agents.orchestrator import VerificationOrchestrator
+
+# Load environment variables
+load_dotenv()
+
+
+def main():
+    """main function for the CLI"""
+    parser = argparse.ArgumentParser(
+        description="Generate and verify code from natural language",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python cli.py "Write a binary search function"
+  python cli.py "Find maximum element in array" --max-iter 10
+  python cli.py "Linear search" --verbose
+
+Environment Variables:
+  CLAUDE_API_KEY    Required: Your Claude API key
+  DAFNY_PATH        Optional: Path to Dafny executable (default: 'dafny')
+        """
+    )
+
+    parser.add_argument(
+        "description",
+        help="Natural language description of the function to generate"
+    )
+
+    parser.add_argument(
+        "-k", "--api-key",
+        help="Claude API key (overrides CLAUDE_API_KEY env var)"
+    )
+
+    parser.add_argument(
+        "-d", "--dafny-path",
+        default=os.getenv("DAFNY_PATH", "dafny"),
+        help="Path to Dafny executable (default: 'dafny')"
+    )
+
+    parser.add_argument(
+        "-m", "--max-iter",
+        type=int,
+        default=5,
+        help="Maximum refinement iterations (default: 5)"
+    )
+
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose output"
+    )
+
+    parser.add_argument(
+        "-o", "--output",
+        help="Save result to file (will create .py and .dfy files)"
+    )
+
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate setup and exit"
+    )
+
+    args = parser.parse_args()
+
+    # figure out which API to use
+    api_provider = os.getenv("API_PROVIDER", "claude").lower()
+
+    if api_provider == "claude":
+        api_key = args.api_key or os.getenv("CLAUDE_API_KEY")
+        model_name = os.getenv("CLAUDE_MODEL")
+        if not api_key and not args.check:
+            print("❌ Error: CLAUDE_API_KEY not set", file=sys.stderr)
+            print("\nSet it via:", file=sys.stderr)
+            print("  1. Environment variable: export CLAUDE_API_KEY=your_key", file=sys.stderr)
+            print("  2. .env file: CLAUDE_API_KEY=your_key", file=sys.stderr)
+            print("  3. Command line: --api-key your_key", file=sys.stderr)
+            sys.exit(1)
+    else:
+        api_key = args.api_key or os.getenv("GEMINI_API_KEY")
+        model_name = os.getenv("GEMINI_MODEL")
+        if not api_key and not args.check:
+            print("❌ Error: GEMINI_API_KEY not set", file=sys.stderr)
+            print("\nSet it via:", file=sys.stderr)
+            print("  1. Environment variable: export GEMINI_API_KEY=your_key", file=sys.stderr)
+            print("  2. .env file: GEMINI_API_KEY=your_key", file=sys.stderr)
+            print("  3. Command line: --api-key your_key", file=sys.stderr)
+            sys.exit(1)
+
+    try:
+        # set up the orchestrator
+        if args.verbose:
+            print("Initializing verifier...")
+
+        orchestrator = VerificationOrchestrator(
+            api_key=api_key,
+            model_name=model_name,
+            dafny_path=args.dafny_path,
+            max_iterations=args.max_iter
+        )
+
+        # if user wants to check setup
+        if args.check:
+            print("Validating setup...")
+            status = orchestrator.validate_setup()
+
+            print("\n" + "="*60)
+            print("Setup Validation")
+            print("="*60)
+
+            if status['dafny']['ok']:
+                print(f"✅ Dafny: {status['dafny'].get('version', 'OK')}")
+            else:
+                print(f"❌ Dafny: {status['dafny']['error']}")
+
+            if status.get('claude_api', {}).get('ok'):
+                print("✅ Claude API: Connected")
+            elif status.get('gemini_api', {}).get('ok'):
+                print("✅ API: Connected")
+            else:
+                error = status.get('claude_api', {}).get('error') or status.get('gemini_api', {}).get('error', 'Unknown error')
+                print(f"❌ API: {error}")
+
+            all_ok = all(s['ok'] for s in status.values())
+            print("="*60)
+            if all_ok:
+                print("✅ All systems operational")
+                sys.exit(0)
+            else:
+                print("❌ Some systems failed")
+                sys.exit(1)
+
+        # generate the code
+        if args.verbose:
+            print(f"\nGenerating code for: {args.description}")
+            print("="*60)
+
+        result = orchestrator.generate_verified_code(
+            args.description,
+            verbose=args.verbose
+        )
+
+        # show the result
+        print("\n" + "="*60)
+        if result.verified:
+            print("✅ VERIFICATION SUCCESSFUL")
+        else:
+            print("❌ VERIFICATION FAILED")
+        print("="*60)
+
+        if result.specification:
+            spec = result.specification
+            print(f"\nFunction: {spec.function_name}")
+            print(f"Returns: {spec.return_type}")
+            print(f"Iterations: {result.total_iterations}")
+
+        if result.verified:
+            print("\n" + "-"*60)
+            print("PYTHON CODE:")
+            print("-"*60)
+            print(result.python_code)
+
+            print("\n" + "-"*60)
+            print("DAFNY CODE:")
+            print("-"*60)
+            print(result.dafny_code)
+
+            # save to files if user wants it
+            if args.output:
+                py_file = f"{args.output}.py"
+                dfy_file = f"{args.output}.dfy"
+
+                with open(py_file, 'w') as f:
+                    f.write(f'"""\nVERIFIED CODE\nGenerated by LLM Formal Verifier\n"""\n\n')
+                    f.write(result.python_code)
+
+                with open(dfy_file, 'w') as f:
+                    f.write(f'/* VERIFIED CODE\n   Generated by LLM Formal Verifier */\n\n')
+                    f.write(result.dafny_code)
+
+                print(f"\n✅ Saved to {py_file} and {dfy_file}")
+
+        else:
+            print(f"\nError: {result.error_message}")
+            if result.attempts and result.attempts[-1].result is not None:
+                print(f"\nLast attempt had {len(result.attempts[-1].result.errors)} errors")
+
+            sys.exit(1)
+
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user")
+        sys.exit(130)
+    except Exception as e:
+        print(f"\n❌ Error: {e}", file=sys.stderr)
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

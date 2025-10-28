@@ -1,0 +1,23 @@
+# LLM API
+google-generativeai>=0.3.0
+anthropic>=0.18.0
+
+# Data validation and parsing
+pydantic>=2.0.0
+
+# Web framework (optional, for API)
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# UI (optional, for demo)
+streamlit>=1.28.0
+
+# Utilities
+python-dotenv>=1.0.0
+typing-extensions>=4.8.0
+
+# Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+mypy>=1.5.0
