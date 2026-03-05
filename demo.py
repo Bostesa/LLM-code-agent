@@ -55,9 +55,9 @@ def print_result(result):
         print("ITERATION HISTORY:")
         print(f"{'='*80}")
         for attempt in result.attempts:
-            status = "✅ Success" if attempt.result.success else "❌ Failed"
+            status = "✅ Success" if (attempt.result and attempt.result.success) else "❌ Failed"
             print(f"\nAttempt {attempt.attempt_number}: {status}")
-            if not attempt.result.success:
+            if attempt.result and not attempt.result.success:
                 print(f"  Errors: {len(attempt.result.errors)}")
                 for error in attempt.result.errors[:3]:  # just show first 3
                     print(f"    - {error.error_type}: {error.message[:80]}...")

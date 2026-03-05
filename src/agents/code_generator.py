@@ -1,14 +1,14 @@
 """code generator using claude"""
-import os
 from typing import Optional, List
 from ..models.specifications import FormalSpecification, VerificationAttempt
 from ..utils.prompts import CODE_GENERATOR_PROMPT, REFINEMENT_PROMPT
 from ..utils.claude_utils import call_claude
+from ..utils.config import LLMConfig
+
 
 class CodeGenerator:
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
-        self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
-        self.model_name = model_name or os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+        self.config = LLMConfig.resolve(api_key, model_name)
 
     def generate(self, spec: FormalSpecification, previous_attempts: Optional[List[VerificationAttempt]] = None) -> str:
         if previous_attempts:
@@ -24,8 +24,8 @@ class CodeGenerator:
             description=spec.description or "", preconditions=preconditions_str,
             postconditions=postconditions_str, feedback_section="", previous_attempts=""
         )
-        code = call_claude(prompt, self.api_key, self.model_name, temperature=0.3)
-        return code.strip().replace("```python","").replace("```","").strip()
+        code = call_claude(prompt, self.config.api_key, self.config.model_name, temperature=0.3)
+        return code.strip().replace("```python", "").replace("```", "").strip()
 
     def _refine_code(self, spec: FormalSpecification, previous_attempts: List[VerificationAttempt]) -> str:
         last_attempt = previous_attempts[-1]
@@ -34,5 +34,5 @@ class CodeGenerator:
             python_code=last_attempt.python_code, dafny_code=last_attempt.dafny_code,
             errors=errors_str, feedback=last_attempt.feedback or ""
         )
-        code = call_claude(prompt, self.api_key, self.model_name, temperature=0.4)
-        return code.strip().replace("```python","").replace("```","").strip()
+        code = call_claude(prompt, self.config.api_key, self.config.model_name, temperature=0.4)
+        return code.strip().replace("```python", "").replace("```", "").strip()

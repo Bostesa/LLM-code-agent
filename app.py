@@ -182,19 +182,14 @@ with tab1:
                         max_iterations=max_iterations
                     )
 
-                # generate code with progress bar
-                with st.spinner("Generating and verifying code..."):
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-
-                    # run verification
+                # generate code
+                with st.spinner("Generating and verifying code... This may take a minute."):
                     result = st.session_state.orchestrator.generate_verified_code(
                         user_input,
                         verbose=False
                     )
 
                     st.session_state.result = result
-                    progress_bar.progress(100)
 
                 # show result
                 if result.verified:

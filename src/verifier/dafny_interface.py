@@ -104,7 +104,7 @@ class DafnyVerifier:
             # Clean up temporary file
             try:
                 os.unlink(temp_file)
-            except:
+            except OSError:
                 pass
 
     def _parse_errors(self, output: str, dafny_code: str) -> list[VerificationError]:

@@ -4,12 +4,12 @@ spec parser that extracts formal specs from natural language
 using claude for way better reliability
 """
 import json
-import os
 from typing import Optional
 
 from ..models.specifications import FormalSpecification, Parameter
 from ..utils.prompts import SPECIFICATION_PARSER_PROMPT
 from ..utils.claude_utils import call_claude
+from ..utils.config import LLMConfig
 
 
 class SpecificationParser:
@@ -23,11 +23,7 @@ class SpecificationParser:
             api_key - claude api key (if None reads from env)
             model_name - claude model name (if None reads from env)
         """
-        self.api_key = api_key or os.getenv("CLAUDE_API_KEY")
-        if not self.api_key:
-            raise ValueError("CLAUDE_API_KEY not found in environment variables")
-
-        self.model_name = model_name or os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+        self.config = LLMConfig.resolve(api_key, model_name)
 
     def parse(self, user_input: str) -> FormalSpecification:
         """
@@ -45,11 +41,11 @@ class SpecificationParser:
         prompt = SPECIFICATION_PARSER_PROMPT.format(user_input=user_input)
 
         try:
-            # call claude (way simpler than gemini)
+            # call claude
             response_text = call_claude(
                 prompt,
-                api_key=self.api_key,
-                model=self.model_name,
+                api_key=self.config.api_key,
+                model=self.config.model_name,
                 temperature=0.1,  # low temp for consistent parsing
                 max_tokens=4096
             )

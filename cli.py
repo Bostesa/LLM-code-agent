@@ -73,29 +73,15 @@ Environment Variables:
 
     args = parser.parse_args()
 
-    # figure out which API to use
-    api_provider = os.getenv("API_PROVIDER", "claude").lower()
-
-    if api_provider == "claude":
-        api_key = args.api_key or os.getenv("CLAUDE_API_KEY")
-        model_name = os.getenv("CLAUDE_MODEL")
-        if not api_key and not args.check:
-            print("❌ Error: CLAUDE_API_KEY not set", file=sys.stderr)
-            print("\nSet it via:", file=sys.stderr)
-            print("  1. Environment variable: export CLAUDE_API_KEY=your_key", file=sys.stderr)
-            print("  2. .env file: CLAUDE_API_KEY=your_key", file=sys.stderr)
-            print("  3. Command line: --api-key your_key", file=sys.stderr)
-            sys.exit(1)
-    else:
-        api_key = args.api_key or os.getenv("GEMINI_API_KEY")
-        model_name = os.getenv("GEMINI_MODEL")
-        if not api_key and not args.check:
-            print("❌ Error: GEMINI_API_KEY not set", file=sys.stderr)
-            print("\nSet it via:", file=sys.stderr)
-            print("  1. Environment variable: export GEMINI_API_KEY=your_key", file=sys.stderr)
-            print("  2. .env file: GEMINI_API_KEY=your_key", file=sys.stderr)
-            print("  3. Command line: --api-key your_key", file=sys.stderr)
-            sys.exit(1)
+    api_key = args.api_key or os.getenv("CLAUDE_API_KEY")
+    model_name = os.getenv("CLAUDE_MODEL")
+    if not api_key and not args.check:
+        print("❌ Error: CLAUDE_API_KEY not set", file=sys.stderr)
+        print("\nSet it via:", file=sys.stderr)
+        print("  1. Environment variable: export CLAUDE_API_KEY=your_key", file=sys.stderr)
+        print("  2. .env file: CLAUDE_API_KEY=your_key", file=sys.stderr)
+        print("  3. Command line: --api-key your_key", file=sys.stderr)
+        sys.exit(1)
 
     try:
         # set up the orchestrator
@@ -125,11 +111,9 @@ Environment Variables:
 
             if status.get('claude_api', {}).get('ok'):
                 print("✅ Claude API: Connected")
-            elif status.get('gemini_api', {}).get('ok'):
-                print("✅ API: Connected")
             else:
-                error = status.get('claude_api', {}).get('error') or status.get('gemini_api', {}).get('error', 'Unknown error')
-                print(f"❌ API: {error}")
+                error = status.get('claude_api', {}).get('error', 'Unknown error')
+                print(f"❌ Claude API: {error}")
 
             all_ok = all(s['ok'] for s in status.values())
             print("="*60)

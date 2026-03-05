@@ -1,20 +1,20 @@
 """
 main orchestrator that coordinates the whole verification process
 """
+import logging
 from typing import Optional
-import time
 
 from .specification_parser import SpecificationParser
 from .code_generator import CodeGenerator
-from .translator import PythonToDafnyTranslator
 from .dafny_generator import DafnyCodeGenerator
 from ..verifier.dafny_interface import DafnyVerifier
 from ..verifier.error_analyzer import ErrorAnalyzer
 from ..models.specifications import (
-    FormalSpecification,
     GenerationResult,
     VerificationAttempt
 )
+
+logger = logging.getLogger(__name__)
 
 
 class VerificationOrchestrator:
@@ -38,7 +38,6 @@ class VerificationOrchestrator:
         """
         self.spec_parser = SpecificationParser(api_key=api_key, model_name=model_name)
         self.code_generator = CodeGenerator(api_key=api_key, model_name=model_name)
-        self.translator = PythonToDafnyTranslator()  # keep for fallback
         self.dafny_generator = DafnyCodeGenerator(api_key=api_key, model_name=model_name)
         self.verifier = DafnyVerifier(dafny_path=dafny_path)
         self.error_analyzer = ErrorAnalyzer(api_key=api_key, model_name=model_name)
@@ -54,68 +53,60 @@ class VerificationOrchestrator:
 
         args:
             user_input - what the user wants
-            verbose - if True prints progress info
+            verbose - if True enables INFO-level logging
 
         returns:
             GenerationResult with final code and verification status
         """
+        if verbose:
+            logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+        spec = None
+        attempts = []
+        iteration = 0
+
         try:
             # step 1: parse specification
-            if verbose:
-                print("\n[1/4] Parsing specification...")
+            logger.info("\n[1/4] Parsing specification...")
             spec = self.spec_parser.parse(user_input)
 
-            if verbose:
-                print(f"  ✓ Function: {spec.function_name}")
-                print(f"  ✓ Parameters: {len(spec.parameters)}")
-                print(f"  ✓ Preconditions: {len(spec.preconditions)}")
-                print(f"  ✓ Postconditions: {len(spec.postconditions)}")
+            logger.info("  Function: %s", spec.function_name)
+            logger.info("  Parameters: %d", len(spec.parameters))
+            logger.info("  Preconditions: %d", len(spec.preconditions))
+            logger.info("  Postconditions: %d", len(spec.postconditions))
 
             # step 2: generate and verify in a loop
-            attempts = []
-            iteration = 0
-
             while iteration < self.max_iterations:
-                if verbose:
-                    print(f"\n[Iteration {iteration + 1}/{self.max_iterations}]")
+                logger.info("\n[Iteration %d/%d]", iteration + 1, self.max_iterations)
 
                 try:
-                    # generate python code
-                    if verbose:
-                        print("  [2/4] Generating Python code...")
-                    python_code = self.code_generator.generate(spec, attempts)
+                    result = None
 
-                    if verbose:
-                        print("  ✓ Python code generated")
+                    # generate python code
+                    logger.info("  [2/4] Generating Python code...")
+                    python_code = self.code_generator.generate(spec, attempts)
+                    logger.info("  Python code generated")
 
                     # generate dafny code using LLM
-                    if verbose:
-                        print("  [3/4] Generating Dafny code...")
+                    logger.info("  [3/4] Generating Dafny code...")
                     dafny_code = self.dafny_generator.generate(spec, python_code)
-
-                    if verbose:
-                        print("  ✓ Dafny code generated")
+                    logger.info("  Dafny code generated")
 
                     # verify with dafny
-                    if verbose:
-                        print("  [4/4] Running Dafny verification...")
+                    logger.info("  [4/4] Running Dafny verification...")
                     result = self.verifier.verify(dafny_code)
 
-                    if verbose:
-                        if result.success:
-                            print("  ✓ Verification SUCCEEDED!")
-                        else:
-                            print(f"  ✗ Verification failed with {len(result.errors)} errors")
+                    if result.success:
+                        logger.info("  Verification SUCCEEDED!")
+                    else:
+                        logger.info("  Verification failed with %d errors", len(result.errors))
 
                     # Analyze errors if verification failed
                     feedback = None
                     if not result.success:
-                        if verbose:
-                            print("  [*] Analyzing errors...")
+                        logger.info("  [*] Analyzing errors...")
                         feedback = self.error_analyzer.analyze(dafny_code, result)
-
-                        if verbose:
-                            print(f"  Feedback: {feedback[:100]}...")
+                        logger.info("  Feedback: %s...", feedback[:100])
 
                     # Record attempt
                     attempt = VerificationAttempt(
@@ -129,8 +120,7 @@ class VerificationOrchestrator:
 
                     # Check if successful
                     if result.success:
-                        if verbose:
-                            print(f"\n✓ Successfully verified in {iteration + 1} iteration(s)!")
+                        logger.info("\nSuccessfully verified in %d iteration(s)!", iteration + 1)
 
                         return GenerationResult(
                             success=True,
@@ -145,15 +135,14 @@ class VerificationOrchestrator:
                     iteration += 1
 
                 except Exception as e:
-                    if verbose:
-                        print(f"  ✗ Error in iteration {iteration + 1}: {e}")
+                    logger.info("  Error in iteration %d: %s", iteration + 1, e)
 
                     # Record failed attempt
                     attempt = VerificationAttempt(
                         attempt_number=iteration + 1,
                         python_code="",
                         dafny_code="",
-                        result=result if 'result' in locals() else None,
+                        result=result,
                         feedback=f"Exception during processing: {e}"
                     )
                     attempts.append(attempt)
@@ -161,8 +150,7 @@ class VerificationOrchestrator:
                     iteration += 1
 
             # Max iterations reached without success
-            if verbose:
-                print(f"\n✗ Could not verify after {self.max_iterations} iterations")
+            logger.info("\nCould not verify after %d iterations", self.max_iterations)
 
             return GenerationResult(
                 success=False,
@@ -180,9 +168,9 @@ class VerificationOrchestrator:
             return GenerationResult(
                 success=False,
                 verified=False,
-                specification=spec if 'spec' in locals() else None,
-                attempts=attempts if 'attempts' in locals() else [],
-                total_iterations=iteration if 'iteration' in locals() else 0,
+                specification=spec,
+                attempts=attempts,
+                total_iterations=iteration,
                 error_message=f"Fatal error: {e}"
             )
 
@@ -202,11 +190,11 @@ class VerificationOrchestrator:
         except Exception as e:
             status['dafny'] = {'ok': False, 'error': str(e)}
 
-        # Check Gemini API
+        # Check Claude API
         try:
             test_spec = self.spec_parser.parse("Write a function that returns 42")
-            status['gemini_api'] = {'ok': True}
+            status['claude_api'] = {'ok': True}
         except Exception as e:
-            status['gemini_api'] = {'ok': False, 'error': str(e)}
+            status['claude_api'] = {'ok': False, 'error': str(e)}
 
         return status
